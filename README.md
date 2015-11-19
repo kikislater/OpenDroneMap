@@ -35,6 +35,53 @@ Steps to get OpenDroneMap running:
 
 (Requires Ubuntu 12.04 or later, see https://github.com/OpenDroneMap/odm_vagrant for running on Windows in a VM)
 
+To get ODM installed in 12.04, follow these steps:
+```
+# Cmake
+wget https://cmake.org/files/v3.4/cmake-3.4.0.tar.gz
+tar xvf cmake-3.4.0.tar.gz
+cd cmake-3.4.0
+./bootstrap && make && make install
+
+# gflags:
+wget https://github.com/schuhschuh/gflags/archive/master.zip
+unzip master.zip
+cd gflags-master
+mkdir build && cd build
+export CXXFLAGS="-fPIC"
+cmake .. -DGFLAGS_NAMESPACE=google
+make 
+sudo make install
+
+# google glog:
+
+https://github.com/google/glog/archive/v0.3.4.tar.gz
+tar xvf v0.3.4.tar.gz
+cd glog-0.3.4
+configure
+make
+sudo make install
+
+# suitesparse:
+
+wget http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.5.tar.gz
+tar xvf SuiteSparse-4.4.5.tar.gz
+cd SuiteSparse/
+make library
+sudo make install
+
+# Eigen 3:
+wget http://bitbucket.org/eigen/eigen/get/3.2.7.tar.gz
+tar xvf 3.2.7.tar.gz
+cd eigen-eigen-b30b87236a1b/
+mkdir build && cd build
+cmake ..
+sudo make install
+
+# Other dependencies
+sudo apt-get install libboost1.48-all-dev
+```
+
 Run install.sh to build.
 
     ./install.sh

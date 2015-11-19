@@ -115,18 +115,22 @@ echo "    - installing"
 if [[ `lsb_release -rs` == "12.04" ]];
 then
 sudo apt-get install --assume-yes --install-recommends \
-  build-essential cmake g++ gcc gFortran perl git autoconf \
+  build-essential g++ gcc gFortran perl git autoconf \
   curl wget \
   unzip \
   imagemagick jhead proj-bin libproj-dev\
-  libjpeg-dev libboost1.48-all-dev libgsl0-dev libx11-dev libxext-dev liblapack-dev \
-  libeigen3-dev libflann-dev libvtk5-dev libqhull-dev libusb-1.0-0-dev\
+  libjpeg-dev libgsl0-dev libx11-dev libxext-dev liblapack-dev \
+  libflann-dev libvtk5-dev libqhull-dev libusb-1.0-0-dev\
   libzip-dev \
+  libdc1394-22-dev libdc1394-22 libdc1394-utils \
   libswitch-perl libjson-perl \
   libcv-dev libcvaux-dev libopencv-dev \
+  python-dev python-pip \
+  python-numpy-dev python-scipy python-yaml \
+  python-opencv python-pyexiv2 \
   gdal-bin \
   exiv2 \
-  libgoogle-glog-dev libatlas-base-dev libsuitesparse-dev \
+  libatlas-base-dev \
   > "$TOOLS_LOG_PATH/apt-get_install.log" 2>&1
 else
 sudo apt-get install --assume-yes --install-recommends \
@@ -403,20 +407,20 @@ echo "  > ceres"
 echo "  < done - `date`"
 echo
 
-echo "  > bundler"
-  cd "$BUNDLER_PATH"
+#echo "  > bundler"
+#  cd "$BUNDLER_PATH"
+#
+#  echo "    - cleaning bundler"
+#  make clean > "$TOOLS_LOG_PATH/bundler_1_clean.log" 2>&1
+#
+#  echo "    - building bundler"
+#  make -j$CORES  > "$TOOLS_LOG_PATH/bundler_2_build.log" 2>&1
+#
+#  ln -s "$BUNDLER_PATH/bin/Bundle2PMVS" "$BUNDLER_PATH/bin/Bundle2Vis" "$BUNDLER_PATH/bin/KeyMatchFull" "$BUNDLER_PATH/bin/KeyMatch" "$BUNDLER_PATH/bin/bundler" "$BUNDLER_PATH/bin/RadialUndistort" "$TOOLS_BIN_PATH/"
 
-  echo "    - cleaning bundler"
-  make clean > "$TOOLS_LOG_PATH/bundler_1_clean.log" 2>&1
-
-  echo "    - building bundler"
-  make -j$CORES  > "$TOOLS_LOG_PATH/bundler_2_build.log" 2>&1
-
-  ln -s "$BUNDLER_PATH/bin/Bundle2PMVS" "$BUNDLER_PATH/bin/Bundle2Vis" "$BUNDLER_PATH/bin/KeyMatchFull" "$BUNDLER_PATH/bin/KeyMatch" "$BUNDLER_PATH/bin/bundler" "$BUNDLER_PATH/bin/RadialUndistort" "$TOOLS_BIN_PATH/"
-
-  ln -s "$BUNDLER_PATH/lib/libANN_char.so" "$TOOLS_LIB_PATH/"
-echo "  < done - `date`"
-echo
+#  ln -s "$BUNDLER_PATH/lib/libANN_char.so" "$TOOLS_LIB_PATH/"
+#echo "  < done - `date`"
+#echo
 
 echo "  > pcl "
 	#cd "$PCL_PATH"
