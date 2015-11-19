@@ -121,7 +121,7 @@ sudo apt-get install --assume-yes --install-recommends \
   imagemagick jhead proj-bin libproj-dev\
   libjpeg-dev libgsl0-dev libx11-dev libxext-dev liblapack-dev \
   libflann-dev libvtk5-dev libqhull-dev libusb-1.0-0-dev\
-  libzip-dev \
+  libzip-dev libboost1.48-all-dev \
   libdc1394-22-dev libdc1394-22 libdc1394-utils \
   libswitch-perl libjson-perl \
   libcv-dev libcvaux-dev libopencv-dev \
@@ -132,8 +132,42 @@ sudo apt-get install --assume-yes --install-recommends \
   exiv2 \
   libatlas-base-dev \
   > "$TOOLS_LOG_PATH/apt-get_install.log" 2>&1
+
+
+  wget https://cmake.org/files/v3.4/cmake-3.4.0.tar.gz
+  tar xvf cmake-3.4.0.tar.gz
+  cd cmake-3.4.0
+  ./bootstrap && make && sudo make install
+  cd ../
+
+  wget https://github.com/schuhschuh/gflags/archive/master.zip
+  unzip master.zip
+  cd gflags-master
+  mkdir build && cd build
+  export CXXFLAGS="-fPIC"
+  cmake .. -DGFLAGS_NAMESPACE=google
+  make 
+  sudo make install
+  cd ../
+
+  wget https://github.com/google/glog/archive/v0.3.4.tar.gz
+  tar xvf v0.3.4.tar.gz
+  cd glog-0.3.4
+  ./configure
+  make
+  sudo make install
+  cd ../
+
+  wget http://bitbucket.org/eigen/eigen/get/3.2.7.tar.gz
+  tar xvf 3.2.7.tar.gz
+  cd eigen-eigen-b30b87236a1b/
+  mkdir build && cd build
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr
+  sudo make install
+  cd ../
+
 else
-sudo apt-get install --assume-yes --install-recommends \
+  sudo apt-get install --assume-yes --install-recommends \
   build-essential cmake g++ gcc gFortran perl git autoconf \
   curl wget \
   unzip \
@@ -407,20 +441,20 @@ echo "  > ceres"
 echo "  < done - `date`"
 echo
 
-#echo "  > bundler"
-#  cd "$BUNDLER_PATH"
-#
-#  echo "    - cleaning bundler"
-#  make clean > "$TOOLS_LOG_PATH/bundler_1_clean.log" 2>&1
-#
-#  echo "    - building bundler"
-#  make -j$CORES  > "$TOOLS_LOG_PATH/bundler_2_build.log" 2>&1
-#
-#  ln -s "$BUNDLER_PATH/bin/Bundle2PMVS" "$BUNDLER_PATH/bin/Bundle2Vis" "$BUNDLER_PATH/bin/KeyMatchFull" "$BUNDLER_PATH/bin/KeyMatch" "$BUNDLER_PATH/bin/bundler" "$BUNDLER_PATH/bin/RadialUndistort" "$TOOLS_BIN_PATH/"
+echo "  > bundler"
+  cd "$BUNDLER_PATH"
 
-#  ln -s "$BUNDLER_PATH/lib/libANN_char.so" "$TOOLS_LIB_PATH/"
-#echo "  < done - `date`"
-#echo
+  echo "    - cleaning bundler"
+  make clean > "$TOOLS_LOG_PATH/bundler_1_clean.log" 2>&1
+
+  echo "    - building bundler"
+  make -j$CORES  > "$TOOLS_LOG_PATH/bundler_2_build.log" 2>&1
+
+  ln -s "$BUNDLER_PATH/bin/Bundle2PMVS" "$BUNDLER_PATH/bin/Bundle2Vis" "$BUNDLER_PATH/bin/KeyMatchFull" "$BUNDLER_PATH/bin/KeyMatch" "$BUNDLER_PATH/bin/bundler" "$BUNDLER_PATH/bin/RadialUndistort" "$TOOLS_BIN_PATH/"
+
+  ln -s "$BUNDLER_PATH/lib/libANN_char.so" "$TOOLS_LIB_PATH/"
+echo "  < done - `date`"
+echo
 
 echo "  > pcl "
 	#cd "$PCL_PATH"
