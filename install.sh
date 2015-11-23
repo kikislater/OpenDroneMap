@@ -26,9 +26,9 @@ echo "  - script started - `date`"
       TOOLS_LOG_PATH="$TOOLS_PATH/logs"
   TOOLS_PATCHED_PATH="$TOOLS_PATH/patched_files"
 
-            ## loacal dest paths
-		        LIB_PATH="/usr/local/lib"
-		        INC_PATH="/usr/local/include"
+            ## local dest paths
+		  LIB_PATH="/usr/local/lib"
+		  INC_PATH="/usr/local/include"
 		
             ## source paths
 	      BUNDLER_PATH="$TOOLS_SRC_PATH/bundler"
@@ -38,9 +38,13 @@ echo "  - script started - `date`"
 	       VLFEAT_PATH="$TOOLS_SRC_PATH/vlfeat"
 	     PARALLEL_PATH="$TOOLS_SRC_PATH/parallel"
 	          PSR_PATH="$TOOLS_SRC_PATH/PoissonRecon"
-        GRACLUS_PATH="$TOOLS_SRC_PATH/graclus"
-          CERES_PATH="$TOOLS_SRC_PATH/ceres-solver"
-
+              GRACLUS_PATH="$TOOLS_SRC_PATH/graclus"
+                CERES_PATH="$TOOLS_SRC_PATH/ceres-solver"
+                CMAKE_PATH="$TOOLS_SRC_PATH/cmake"
+               GFLAGS_PATH="$TOOLS_SRC_PATH/gflags"
+                 GLOG_PATH="$TOOLS_SRC_PATH/glog"
+          SUITESPARSE_PATH="$TOOLS_SRC_PATH/suitesparse"
+                EIGEN_PATH="$TOOLS_SRC_PATH/eigen"
                   PCL_PATH="$TOOLS_SRC_PATH/pcl"
              LASTOOLS_PATH="$TOOLS_SRC_PATH/lastools"
           ODM_MESHING_PATH="$TOOLS_SRC_PATH/odm_meshing"
@@ -48,9 +52,8 @@ echo "  - script started - `date`"
        ODM_ORTHOPHOTO_PATH="$TOOLS_SRC_PATH/odm_orthophoto"
       ODM_EXTRACT_UTM_PATH="$TOOLS_SRC_PATH/odm_extract_utm"
            ODM_GEOREF_PATH="$TOOLS_SRC_PATH/odm_georef"
-
-         OPENGV_PATH="$TOOLS_SRC_PATH/opengv"
-        OPENSFM_PATH="$TOOLS_SRC_PATH/OpenSfM"
+               OPENGV_PATH="$TOOLS_SRC_PATH/opengv"
+              OPENSFM_PATH="$TOOLS_SRC_PATH/OpenSfM"
 
             ## executables
 	     EXTRACT_FOCAL="$TOOLS_BIN_PATH/extract_focal.pl"
@@ -132,39 +135,6 @@ sudo apt-get install --assume-yes --install-recommends \
   exiv2 \
   libatlas-base-dev \
   > "$TOOLS_LOG_PATH/apt-get_install.log" 2>&1
-
-
-  wget https://cmake.org/files/v3.4/cmake-3.4.0.tar.gz
-  tar xvf cmake-3.4.0.tar.gz
-  cd cmake-3.4.0
-  ./bootstrap && make && sudo make install
-  cd ../
-
-  wget https://github.com/schuhschuh/gflags/archive/master.zip
-  unzip master.zip
-  cd gflags-master
-  mkdir build && cd build
-  export CXXFLAGS="-fPIC"
-  cmake .. -DGFLAGS_NAMESPACE=google
-  make 
-  sudo make install
-  cd ../
-
-  wget https://github.com/google/glog/archive/v0.3.4.tar.gz
-  tar xvf v0.3.4.tar.gz
-  cd glog-0.3.4
-  ./configure
-  make
-  sudo make install
-  cd ../
-
-  wget http://bitbucket.org/eigen/eigen/get/3.2.7.tar.gz
-  tar xvf 3.2.7.tar.gz
-  cd eigen-eigen-b30b87236a1b/
-  mkdir build && cd build
-  cmake .. -DCMAKE_INSTALL_PREFIX=/usr
-  sudo make install
-  cd ../
 
 else
   sudo apt-get install --assume-yes --install-recommends \
@@ -426,20 +396,22 @@ echo "  < done - `date`"
 echo
 
 echo "  > ceres"
-  cd "$CERES_PATH"
+  if [[ `lsb_release -rs` == "12.04" ]];
+  then
+    echo "ceres not supported in 12.04 - skipping"
+  else
+    cd "$CERES_PATH"
 
-  echo "    - configuring ceres"
-  mkdir -p build
-  cd build
-  cmake .. -DCMAKE_INSTALL_PREFIX=$TOOLS_PATH \
-           -DCMAKE_C_FLAGS=-fPIC -DCMAKE_CXX_FLAGS=-fPIC \
-           -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF  > "$TOOLS_LOG_PATH/ceres_1_config.log" 2>&1
+    echo "    - configuring ceres"
+    mkdir -p build
+    cd build
 
   echo "    - building ceres"
   make -j$CORES install > "$TOOLS_LOG_PATH/ceres_1_build.log" 2>&1
 
 echo "  < done - `date`"
 echo
+fi
 
 echo "  > bundler"
   cd "$BUNDLER_PATH"
