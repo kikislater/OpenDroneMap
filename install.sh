@@ -141,7 +141,7 @@ sudo apt-get install --assume-yes --install-recommends \
   libjson-perl \
   libzip-dev \
   libswitch-perl \
-  libcv-dev libcvaux-dev libopencv-nonfree-dev \
+  libcv-dev libcvaux-dev libopencv-dev libopencv-nonfree-dev \
   libgoogle-glog-dev libatlas-base-dev libeigen3-dev libsuitesparse-dev \
   python-dev python-pip libboost-python-dev \
   python-numpy-dev python-scipy python-yaml \
