@@ -824,7 +824,7 @@ def odm_texturing():
                         fout.write("./{}\n".format(fileObject["src"]))
                         break
 
-    run("\"" + BIN_PATH + "/odm_texturing\" -bundleFile " + jobOptions["jobDir"] + "/pmvs/bundle.rd.out -imagesPath " + jobOptions["srcDir"] + "/ -imagesListPath " + texturing_list + " -inputModelPath " + jobOptions["jobDir"] + "-results/odm_mesh-0000.ply -outputFolder " + jobOptions["jobDir"] + "-results/odm_texturing/ -textureResolution " + str(args.odm_texturing_textureResolution) + " -bundleResizedTo " + str(jobOptions["resizeTo"]) + " -textureWithSize " + str(args.odm_texturing_textureWithSize) + " -logFile " + jobOptions["jobDir"] + "/odm_texturing/odm_texturing_log.txt")
+    run("\"" + BIN_PATH + "/odm_texturing\" -bundleFile " + jobOptions["jobDir"] + "/pmvs/bundle.rd.out -imagesPath " + jobOptions["srcDir"] + "/ -imagesListPath " + texturing_list + " -inputModelPath " + jobOptions["jobDir"] + "-results/odm_mesh-0000.ply -outputFolder " + jobOptions["jobDir"] + "-results/odm_texturing/ -textureResolution " + str(args.odm_texturing_textureResolution) + " -bundleResizedTo " + str(jobOptions["resizeTo"]) + " -textureWithSize " + str(args.odm_texturing_textureWithSize) + " -performBlending -logFile " + jobOptions["jobDir"] + "/odm_texturing/odm_texturing_log.txt")
 
 
 def odm_georeferencing():

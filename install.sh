@@ -115,18 +115,21 @@ echo "    - installing"
 if [[ `lsb_release -rs` == "12.04" ]];
 then
 sudo apt-get install --assume-yes --install-recommends \
-  build-essential cmake g++ gcc gFortran perl git autoconf \
+  build-essential g++ gcc gFortran perl git autoconf \
   curl wget \
   unzip \
   imagemagick jhead proj-bin libproj-dev\
-  libjpeg-dev libboost1.48-all-dev libgsl0-dev libx11-dev libxext-dev liblapack-dev \
-  libeigen3-dev libflann-dev libvtk5-dev libqhull-dev libusb-1.0-0-dev\
+  libjpeg-dev libboost1.46-dev libgsl0-dev libx11-dev libxext-dev liblapack-dev \
+  libflann-dev libvtk5-dev libqhull-dev libusb-1.0-0-dev\
   libzip-dev \
   libswitch-perl libjson-perl \
-  libcv-dev libcvaux-dev libopencv-dev \
+  libcv-dev libcvaux-dev \
   gdal-bin \
   exiv2 \
-  libgoogle-glog-dev libatlas-base-dev libsuitesparse-dev \
+  libatlas-base-dev \
+  python-dev python-pip \
+  python-numpy-dev python-scipy python-yaml \
+  python-opencv python-pyexiv2 \
   > "$TOOLS_LOG_PATH/apt-get_install.log" 2>&1
 else
 sudo apt-get install --assume-yes --install-recommends \
@@ -139,11 +142,10 @@ sudo apt-get install --assume-yes --install-recommends \
   libjson-perl \
   libzip-dev \
   libswitch-perl \
-  libcv-dev libcvaux-dev libopencv-dev \
   libgoogle-glog-dev libatlas-base-dev libeigen3-dev libsuitesparse-dev \
   python-dev python-pip libboost-python-dev \
   python-numpy-dev python-scipy python-yaml \
-  python-opencv python-pyexiv2 \
+  python-pyexiv2 \
   gdal-bin \
   exiv2 \
   > "$TOOLS_LOG_PATH/apt-get_install.log" 2>&1
@@ -465,7 +467,7 @@ echo "  > texturing "
 	cd "$ODM_TEXTURING_PATH"
 	
 	echo "    - configuring odm_texturing"
-	cmake . -DPCL_DIR="$TOOLS_LIB_PATH/pcl" > "$TOOLS_LOG_PATH/odm_texturing_1_build.log" 2>&1
+	cmake . -DPCL_DIR="$TOOLS_LIB_PATH/pcl" -DOPENCV_DIR="/usr/local/lib/" > "$TOOLS_LOG_PATH/odm_texturing_1_build.log" 2>&1
 	
 	echo "    - building odm_texturing"
 	make -j$CORES > "$TOOLS_LOG_PATH/odm_texturing_2_build.log" 2>&1
