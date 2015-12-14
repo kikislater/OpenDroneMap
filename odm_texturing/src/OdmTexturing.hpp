@@ -1,8 +1,33 @@
 #pragma once
 
+#include <iostream>
+#include <fstream>
+#include <string>
+
+#ifdef HASBLENDING
+    #include "opencv2/opencv_modules.hpp"
+    #if defined HAVE_OPENCV_STITCHING && defined HAVE_OPENCV_NONFREE
+
+        #include <opencv2/stitching/stitcher.hpp>
+        #include "opencv2/stitching/detail/autocalib.hpp"
+        #include "opencv2/stitching/detail/blenders.hpp"
+        #include "opencv2/stitching/detail/camera.hpp"
+        #include "opencv2/stitching/detail/exposure_compensate.hpp"
+        #include "opencv2/stitching/detail/matchers.hpp"
+        #include "opencv2/stitching/detail/motion_estimators.hpp"
+        #include "opencv2/stitching/detail/seam_finders.hpp"
+        #include "opencv2/stitching/detail/util.hpp"
+        #include "opencv2/stitching/detail/warpers.hpp"
+        #include "opencv2/stitching/warpers.hpp"
+    #else
+        #undef HASBLENDING
+    #endif // defined HAVE_OPENCV_STITCHING && defined HAVE_OPENCV_NONFREE
+#endif // defined HASBLENDING
+
 // STL
 #include <iostream>
 #include <fstream>
+#include <map>
 
 // PCL
 #include <pcl/point_types.h>
@@ -12,12 +37,15 @@
 // OpenCV
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/stitching/stitcher.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 
 // Modified PCL functions
 #include "modifiedPclFunctions.hpp"
 
 // Logging
 #include "Logger.hpp"
+
 
 /*!
  * \brief The Coords struct     Coordinate class used in recursiveFindCoordinates for OdmTexturing::sortPatches().
@@ -97,6 +125,17 @@ struct Node
 };
 
 /*!
+ * \brief sortPairIndex struct  sortPairIndex class for fast sort of image quality vector.
+ */
+struct sortPairIndex
+{
+    bool operator()(const std::pair<int, int> &left, const std::pair<int, int> &right)
+    {
+        return left.second < right.second;
+    }
+};
+
+/*!
  * \brief   The OdmTexturing class is used to create textures to a welded ply-mesh using the camera
  *          positions from pmvs as input. The result is stored in an obj-file with corresponding
  *          mtl-file and the textures saved as jpg.
@@ -138,6 +177,24 @@ private:
     void loadCameras();
 
     /*!
+     * \brief blendImages           Blends each image with its k neares neighbors.
+     */
+    void blendImages();
+
+    /*!
+     * \brief loadCameras           Blends each image with its k neares neighbors.
+     *
+     * \param image                 The image to be compensated
+     * \param currentCameraIndex    index in cameras_ vector of the camera to be blended
+     */
+    void blendImage(cv::Mat &image, size_t currentCameraIndex);
+
+    /*!
+    * \brief evaluateImageQuality     Evaluates and sorts the images according to quality regarding blur, over/under exposure and alignment.
+    */
+    void evaluateImageQuality();
+
+    /*!
      * \brief triangleToImageAssignment     Assigns optimal camera to faces for the faces that are visible.
      */
     void triangleToImageAssignment();
@@ -172,6 +229,16 @@ private:
     void writeObjFile();
 
     /*!
+     * \brief affine3fToCvMat4x4    Converts an Eigen 4x4 matrix to an OpenCV 4x4 matrix.
+     *
+     * \param   input   Input Eigen 4x4 Matrix
+     *
+     * \return  input matrix as an OpenCV matrix.
+     */
+    cv::Mat affine3fToCvMat4x4(const Eigen::Affine3f &input);
+
+
+    /*!
      * \brief printHelp         Prints help, explaining usage. Can be shown by calling the program with arguments: "-help".
      */
     void printHelp();
@@ -179,22 +246,27 @@ private:
     Logger log_;                    /**< Logging object. */
     std::string logFilePath_;       /**< Path to store the log file. */
 
-    std::string bundlePath_;        /**< Path to the bundle.out file. */
-    std::string imagesPath_;        /**< Path to the folder with all images in the image list. */
-    std::string imagesListPath_;    /**< Path to the image list. */
-    std::string inputModelPath_;    /**< Path to the ply-file containing the mesh to be textured. */
-    std::string outputFolder_;      /**< Path to the folder to store the output mesh and textures. */
+    std::string bundlePath_;                    /**< Path to the bundle.out file. */
+    std::string imagesPath_;                    /**< Path to the folder with all images in the image list. */
+    std::string imagesListPath_;                /**< Path to the image list. */
+    std::string inputModelPath_;                /**< Path to the ply-file containing the mesh to be textured. */
+    std::string outputFolder_;                  /**< Path to the folder to store the output mesh and textures. */
+    std::string outputBlendedImagesFolder_;     /**< Path to the folder where blended/compensated images are stored. */
 
     double bundleResizedTo_;        /**< The size used in the previous steps to calculate the camera focal_length. */
     double textureWithSize_;        /**< The desired size of the images to texture with. */
     double textureResolution_;      /**< The resolution of each texture. */
     double padding_;                /**< A padding used to handle edge cases. */
-    int nrTextures_;             /**< The number of textures created. */
+    int nrTextures_;                /**< The number of textures created. */
+    int nrCamerasToBlend_;          /**< The number of camera pairs used when blending/exposure compensating each image. If <= 0, no blending/exposure compensation is performed. */
+    bool performBlending_;           /**< If true, blending is performed (provided that nrCamerasToBlend_ > 0). */
 
-    pcl::TextureMesh::Ptr mesh_;    /**< PCL Texture Mesh */
-    std::vector<Patch> patches_;    /**< The vector containing all patches */
+    pcl::TextureMesh::Ptr mesh_;                    /**< PCL Texture Mesh */
+    std::vector<Patch> patches_;                    /**< The vector containing all patches */
+    std::vector<std::vector<Patch> > patchesVec_;   /**< The vector containing all possible patches */
     pcl::texture_mapping::CameraVector cameras_;    /**< The vector containing all cameras. */
-    std::vector<int> tTIA_;         /**< The vector containing the optimal cameras for all faces. */
+    std::vector<int> tTIA_;                         /**< The vector containing the optimal cameras for all faces. */
+    std::vector<int> sortedCameras_;                /**< The vector containing the cameras in sorted order after a quality index. */
 };
 
 class OdmTexturingException : public std::exception

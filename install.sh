@@ -129,6 +129,8 @@ sudo apt-get install --assume-yes --install-recommends \
   libgoogle-glog-dev libatlas-base-dev libsuitesparse-dev \
   > "$TOOLS_LOG_PATH/apt-get_install.log" 2>&1
 else
+sudo add-apt-repository --yes ppa:xqms/opencv-nonfree
+sudo apt-get update
 sudo apt-get install --assume-yes --install-recommends \
   build-essential cmake g++ gcc gFortran perl git autoconf \
   curl wget \
@@ -139,7 +141,7 @@ sudo apt-get install --assume-yes --install-recommends \
   libjson-perl \
   libzip-dev \
   libswitch-perl \
-  libcv-dev libcvaux-dev libopencv-dev \
+  libcv-dev libcvaux-dev libopencv-nonfree-dev \
   libgoogle-glog-dev libatlas-base-dev libeigen3-dev libsuitesparse-dev \
   python-dev python-pip libboost-python-dev \
   python-numpy-dev python-scipy python-yaml \

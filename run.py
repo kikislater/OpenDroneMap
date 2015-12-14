@@ -231,6 +231,18 @@ parser.add_argument('--odm_texturing-textureWithSize',
                     help=('The resolution to rescale the images performing '
                             'the texturing. Default: %(default)s'))
 
+parser.add_argument('--odm_texturing-performBlending',
+                    action='store_true',
+                    default=False,
+                    help = 'If provided blending will be performed.'
+                             'Will increase computation time. Blending is not used by default.')
+
+parser.add_argument('--odm_texturing-numCamerasToBlend',
+                    metavar='<positive integer>',
+                    default=3,
+                    type=int,
+                    help=('The number of images to use in the blending step. Default: %(default)s'))
+
 parser.add_argument('--odm_georeferencing-gcpFile',
                     metavar='<path string>',
                     default='gcp_list.txt',
@@ -824,7 +836,11 @@ def odm_texturing():
                         fout.write("./{}\n".format(fileObject["src"]))
                         break
 
-    run("\"" + BIN_PATH + "/odm_texturing\" -bundleFile " + jobOptions["jobDir"] + "/pmvs/bundle.rd.out -imagesPath " + jobOptions["srcDir"] + "/ -imagesListPath " + texturing_list + " -inputModelPath " + jobOptions["jobDir"] + "-results/odm_mesh-0000.ply -outputFolder " + jobOptions["jobDir"] + "-results/odm_texturing/ -textureResolution " + str(args.odm_texturing_textureResolution) + " -bundleResizedTo " + str(jobOptions["resizeTo"]) + " -textureWithSize " + str(args.odm_texturing_textureWithSize) + " -logFile " + jobOptions["jobDir"] + "/odm_texturing/odm_texturing_log.txt")
+    blendParams = ""
+    if args.odm_texturing_performBlending:
+        blendParams = " -performBlending -outputBlendedImagesFolder " + jobOptions["jobDir"] + "/odm_texturing/ -nrCamerasToBlend " + str(args.odm_texturing_numCamerasToBlend)
+
+    run("\"" + BIN_PATH + "/odm_texturing\" -bundleFile " + jobOptions["jobDir"] + "/pmvs/bundle.rd.out -imagesPath " + jobOptions["srcDir"] + "/ -imagesListPath " + texturing_list + " -inputModelPath " + jobOptions["jobDir"] + "-results/odm_mesh-0000.ply -outputFolder " + jobOptions["jobDir"] + "-results/odm_texturing/ -textureResolution " + str(args.odm_texturing_textureResolution) + " -bundleResizedTo " + str(jobOptions["resizeTo"]) + " -textureWithSize " + str(args.odm_texturing_textureWithSize) + blendParams + " -logFile " + jobOptions["jobDir"] + "/odm_texturing/odm_texturing_log.txt")
 
 
 def odm_georeferencing():

@@ -9,6 +9,8 @@ OdmTexturing::OdmTexturing() : log_(false)
     textureResolution_ = 4096.0;
     nrTextures_ = 0;
     padding_ = 15.0;
+    nrCamerasToBlend_ = 3;
+    performBlending_ = false;
 
     mesh_ = pcl::TextureMeshPtr(new pcl::TextureMesh);
     patches_ = std::vector<Patch>(0);
@@ -34,6 +36,13 @@ int OdmTexturing::run(int argc, char **argv)
         parseArguments(argc, argv);
         loadMesh();
         loadCameras();
+
+        if (performBlending_)
+        {
+            blendImages();
+        }
+
+        evaluateImageQuality();
         triangleToImageAssignment();
         calculatePatches();
         sortPatches();
@@ -72,7 +81,10 @@ int OdmTexturing::run(int argc, char **argv)
 }
 
 void OdmTexturing::parseArguments(int argc, char** argv)
-{
+{    
+
+    bool blendedImagesPathProvided = false;
+
     for(int argIndex = 1; argIndex < argc; ++argIndex)
     {
         // The argument to be parsed
@@ -113,6 +125,10 @@ void OdmTexturing::parseArguments(int argc, char** argv)
             {
                 throw OdmTexturingException("Argument '" + argument + "' has a bad value. (wrong type)");
             }
+            if (!imagesPath_.empty() && *imagesPath_.rbegin() != '/')
+            {
+                imagesPath_ += '/';
+            }
             log_ << "Images path was set to: " << imagesPath_ << "\n";
         }
         else if (argument == "-imagesListPath")
@@ -146,6 +162,26 @@ void OdmTexturing::parseArguments(int argc, char** argv)
             }
             log_ << "Input model path was set to: " << inputModelPath_ << "\n";
         }
+        else if (argument == "-outputBlendedImagesFolder")
+        {
+            ++argIndex;
+            if (argIndex >= argc)
+            {
+                throw OdmTexturingException("Missing argument for '" + argument + "'.");
+            }
+            std::stringstream ss(argv[argIndex]);
+            ss >> outputBlendedImagesFolder_;
+            if (ss.bad())
+            {
+                throw OdmTexturingException("Argument '" + argument + "' has a bad value. (wrong type)");
+            }
+            if (!outputBlendedImagesFolder_.empty() && *outputBlendedImagesFolder_.rbegin() != '/')
+            {
+                outputBlendedImagesFolder_ += '/';
+            }
+            log_ << "Output folder path for blended images was set to: " << outputBlendedImagesFolder_ << "\n";
+            blendedImagesPathProvided = true;
+        }
         else if (argument == "-outputFolder")
         {
             ++argIndex;
@@ -158,6 +194,10 @@ void OdmTexturing::parseArguments(int argc, char** argv)
             if (ss.bad())
             {
                 throw OdmTexturingException("Argument '" + argument + "' has a bad value. (wrong type)");
+            }
+            if (!outputFolder_.empty() && *outputFolder_.rbegin() != '/')
+            {
+                outputFolder_ += '/';
             }
             log_ << "Output folder path was set to: " << outputFolder_ << "\n";
         }
@@ -221,6 +261,26 @@ void OdmTexturing::parseArguments(int argc, char** argv)
             }
             log_ << "The resized resolution used in bundler was set to: " << bundleResizedTo_ << "\n";
         }
+        else if (argument == "-performBlending")
+        {
+            performBlending_ = true;
+            log_ << "Blending will be performed." << "\n";
+        }
+        else if (argument == "-nrCamerasToBlend")
+        {
+            ++argIndex;
+            if (argIndex >= argc)
+            {
+                throw OdmTexturingException("Missing argument for '" + argument + "'.");
+            }
+            std::stringstream ss(argv[argIndex]);
+            ss >> nrCamerasToBlend_;
+            if (ss.bad())
+            {
+                throw OdmTexturingException("Argument '" + argument + "' has a bad value. (wrong type)");
+            }
+            log_ << "The number of images to blend with was set to: " << nrCamerasToBlend_ << "\n";
+        }
         else
         {
             printHelp();
@@ -234,6 +294,18 @@ void OdmTexturing::parseArguments(int argc, char** argv)
         log_ << "textureWithSize parameter was set to a lower value since it can not be greater than the texture resolution.\n";
     }
 
+    if (performBlending_ == false)
+    {
+        log_ << "Blending will not be performed." << "\n";
+    }
+    else
+    {
+        if (blendedImagesPathProvided == false)
+        {
+            log_ << "Path for storage of blended images was not provided. Will use image path: " << imagesPath_ << "\n";
+            outputBlendedImagesFolder_ = imagesPath_;
+        }
+    }
 }
 
 void OdmTexturing::loadMesh()
@@ -346,11 +418,11 @@ void OdmTexturing::loadCameras()
 
         if (firstWhitespace != std::string::npos)
         {
-            cam.texture_file = imagesPath_ + "/" + dummyLine.substr(2,firstWhitespace-2);
+            cam.texture_file = imagesPath_ + dummyLine.substr(2,firstWhitespace-2);
         }
         else
         {
-            cam.texture_file = imagesPath_ + "/" + dummyLine.substr(2);
+            cam.texture_file = imagesPath_ + dummyLine.substr(2);
         }
 
         // Read image to get full resolution size
@@ -378,9 +450,560 @@ void OdmTexturing::loadCameras()
 
         // Add camera
         cameras_.push_back(cam);
+    }
+}
+
+void OdmTexturing::blendImages()
+{
+    #ifdef HASBLENDING
+
+    std::vector<std::string> newTextureFiles;
+
+        for (size_t cameraIndex = 0; cameraIndex < cameras_.size(); ++cameraIndex)
+        {
+            // Load image for current camera
+            cv::Mat image = cv::imread(cameras_[cameraIndex].texture_file,1);
+
+            // Calculate the resize factor to texturize with textureWithSize_
+            double resizeFactor = textureWithSize_ / static_cast<double>(image.cols);
+
+            if (resizeFactor > 1.0f)
+            {
+                resizeFactor = 1.0f;
+            }
+
+            // Resize image to the resolution used to texture with
+            cv::Mat resizedImage;
+            cv::resize(image, resizedImage, cv::Size(), resizeFactor, resizeFactor, CV_INTER_AREA);
+
+            try
+            {
+                blendImage(resizedImage, cameraIndex);
+
+                std::stringstream blendedImagePathStream;
+                blendedImagePathStream << outputBlendedImagesFolder_<< "blendedImage" << cameraIndex << ".jpg";
+                cv::imwrite(blendedImagePathStream.str(), resizedImage);
+                newTextureFiles.push_back(blendedImagePathStream.str());
+
+            }
+            catch (std::exception&)
+            {
+                log_ << "Failed to blend any images into camera: " << cameraIndex << ", lowering priority.\n";
+                newTextureFiles.push_back(cameras_[cameraIndex].texture_file);
+            }
+        }
+
+        for (size_t i = 0; i < cameras_.size(); ++i)
+        {
+            cameras_[i].texture_file = newTextureFiles[i];
+        }
+
+    #else
+        log_ << "Unable to run blending due to bad OpenCV version. Required modules are nonfree and stitching.\n";
+    #endif
+}
+
+void OdmTexturing::blendImage(cv::Mat& image, size_t currentCameraIndex)
+{
+    #ifdef HASBLENDING
+
+        // Store the input image size
+        cv::Size imageSize = image.size();
+
+        // Detecting feature points in images.
+        cv::detail::SurfFeaturesFinder featureFinder;
+
+        // Inverted camera pose used to calculate relative poses
+        cv::Mat invertedPose = affine3fToCvMat4x4(cameras_[currentCameraIndex].pose.inverse());
+
+        // Mulimap used for sort image distances
+        std::multimap<float, size_t> distanceIndices;
+
+        // Loop and check distance to all cameras
+        for (size_t cameraIndex = 0; cameraIndex < cameras_.size(); ++cameraIndex)
+        {
+            // Calculate relative pose between cameras
+            cv::Mat relativePose =  affine3fToCvMat4x4(cameras_[cameraIndex].pose)*invertedPose;
+
+            // Calculate distance
+            float distance = cv::norm(relativePose.col(3).rowRange(0,3));
+
+            // Add distance with cameraIndex to multimap
+            distanceIndices.insert(std::pair<float, size_t>(distance, cameraIndex));
+        }
+
+        // Exposure compensator from OpenCV
+        cv::Ptr<cv::detail::ExposureCompensator> exposureCompensator = cv::detail::ExposureCompensator::createDefault(cv::detail::ExposureCompensator::GAIN_BLOCKS);
+
+        // Blender used to allocate multiband blender
+        cv::Ptr<cv::detail::Blender> blender = cv::detail::Blender::createDefault(cv::detail::Blender::MULTI_BAND);
+
+        // Vectors containing input and output for OpenCV blending
+        std::vector<cv::Point>  corners, resizedCorners;
+        std::vector<cv::Mat>    masks, resizedMasks;
+        std::vector<cv::Mat>    warpedImages;
+        std::vector<cv::Mat>    resizedImages;
+
+        // Bool to check if the current index is the first camera
+        bool firstImage = true;
+
+        // Iterator to go through the distances
+        std::multimap<float, size_t>::iterator distanceIndexIterator = distanceIndices.begin();
+
+        // Skip the first distance
+        ++distanceIndexIterator;
+
+        // Vector to store the features detected in the image pair
+        std::vector <cv::detail::ImageFeatures> cameraFeatureVector(2);
+
+        // Find features in the current camera
+        featureFinder(image, cameraFeatureVector[0]);
+
+        log_ << "Found "<< cameraFeatureVector[0].keypoints.size()<<" features in the image. \n";
+
+        int blendedCameras = 0;
+        int testedCameraCount = 0;
+
+        // Loop over the closest cameras and try to blend
+        for (size_t cameraIndex = 1; cameraIndex < cameras_.size() && blendedCameras < nrCamerasToBlend_ && testedCameraCount < 15; ++cameraIndex, ++distanceIndexIterator)
+        {
+            ++testedCameraCount;
+
+            // Read the image to try to blend with
+            cv::Mat queryImage = cv::imread(cameras_[distanceIndexIterator->second].texture_file);
+
+            // Resize to the same size
+            cv::resize(queryImage, queryImage, imageSize);
+
+            // Find features in the query image
+            featureFinder(queryImage, cameraFeatureVector[1]);
+
+            // Vector to store matches between the features
+            std::vector<cv::detail::MatchesInfo> matchesVector;
+
+            // Create the matcher
+            cv::detail::BestOf2NearestMatcher matcher(false, 0.1, 15, 15);
+
+            // Try to match images and if it fails try with the next camera
+            try
+            {
+                if(cameraFeatureVector[0].keypoints.size() >= 2 && cameraFeatureVector[1].keypoints.size() >= 2)
+                {
+                    // Match the features
+                    matcher(cameraFeatureVector, matchesVector);
+                    matcher.collectGarbage();
+                }
+                else
+                {
+                    continue;
+                }
+            }
+            catch (std::exception&)
+            {
+                log_ << "Failed to match features of camera pair: " << currentCameraIndex << "-" << distanceIndexIterator->second << ".\n";
+                continue;
+            }
+
+            // Failed to blend with current pair, attempting to blend with the next one.
+            if (matchesVector[1].num_inliers < 100)
+            {
+                log_ << "Too few matches ("<< matchesVector[1].num_inliers  <<") in camera pair: " << currentCameraIndex << "-" << distanceIndexIterator->second << ".\n";
+                continue;
+            }
+
+            // Vector with the camera parameters to calculate relative pose
+            std::vector<cv::detail::CameraParams> newCameraParameters(2);
+
+            // Add current parameters for both cameras
+            newCameraParameters[0].focal = cameras_[currentCameraIndex].focal_length; // Focal length
+            newCameraParameters[0].aspect = 1.0;    // Aspect ratio
+            newCameraParameters[0].ppx = static_cast<double>(imageSize.width)/2.0; // Principal point X
+            newCameraParameters[0].ppy = static_cast<double>(imageSize.height)/2.0; // Principal point Y
+
+            newCameraParameters[1].focal = cameras_[distanceIndexIterator->second].focal_length; // Focal length
+            newCameraParameters[1].aspect = 1.0; // Aspect ratio
+            newCameraParameters[1].ppx = static_cast<double>(imageSize.width)/2.0; // Principal point X
+            newCameraParameters[1].ppy = static_cast<double>(imageSize.height)/2.0; // Principal point Y
+
+            // Convert internal format to float
+            for (size_t k = 0; k < newCameraParameters.size(); ++k)
+            {
+                cv::Mat R;
+                newCameraParameters[k].R.convertTo(R, CV_32F);
+                newCameraParameters[k].R = R;
+            }
+
+            // Create bundle adjuster from OpenCV
+            cv::Ptr<cv::detail::BundleAdjusterRay> bundleAdjuster(new cv::detail::BundleAdjusterRay);
+
+            // Setup bundler parameters
+            bundleAdjuster->setConfThresh(0.1);
+            cv::Mat_<uchar> refineMask = cv::Mat::ones(3,3,CV_8U);
+            bundleAdjuster->setRefinementMask(refineMask);
+
+            // Perform bundle adjustment
+            (*bundleAdjuster)(cameraFeatureVector, matchesVector, newCameraParameters);
+
+            // Bool to check if the bundling failed
+            bool badBundling = false;
+
+            // Loop thorugh both cameras
+            for (size_t k = 0; k < newCameraParameters.size(); ++k)
+            {
+                // Convert internal format to float
+                cv::Mat R;
+                newCameraParameters[k].R.convertTo(R, CV_32F);
+                newCameraParameters[k].R = R;
+
+                // Check each element of the matrix if they are ok
+                for (size_t elementIndex = 0; elementIndex < 9; ++elementIndex)
+                {
+                    // If the element is bad, mark the bundling as failed.
+                    if (std::isnan(R.ptr<float>()[elementIndex]))
+                    {
+                        badBundling = true;
+                        break;
+                    }
+                }
+                if (badBundling)
+                {
+                    break;
+                }
+            }
+            if (badBundling)
+            {
+                log_ << "Unable to calculate relative position (output is nan) for camera pair: " << currentCameraIndex << "-" << distanceIndexIterator->second << ".\n";
+                continue;
+            }
+
+            cv::Mat refK, queryK;
+            newCameraParameters[0].K().convertTo(refK, CV_32F);
+            newCameraParameters[1].K().convertTo(queryK, CV_32F);
+
+            // Create the warper to transform the query image into the current image
+            cv::Ptr<cv::WarperCreator> warperCreator = new cv::PlaneWarper();
+            cv::Ptr<cv::detail::RotationWarper> warper = warperCreator->create(refK.at<float>(0,0));
+
+            // Create mask
+            cv::Mat mask(image.size(), CV_8U);
+            mask.setTo(cv::Scalar::all(255));
+
+            // Warp the masks and images according to the calculated relative pose
+            cv::Mat warpedQueryMask;
+            cv::Mat warpedQueryImage;
+            cv::Mat warpedReferenceImage;
+            cv::Point warpedReferenceCorner = warper->warp(image, refK, newCameraParameters[0].R, CV_INTER_LINEAR, cv::BORDER_REFLECT, warpedReferenceImage);
+            cv::Point warpedQueryCorner = warper->warp(queryImage, queryK, newCameraParameters[1].R, CV_INTER_LINEAR, cv::BORDER_REFLECT, warpedQueryImage);
+
+            warper->warp(mask, queryK, newCameraParameters[1].R, CV_INTER_NN, cv::BORDER_CONSTANT, warpedQueryMask);
+
+            // The resize factor for exposure compensation
+            double compensatorResize = 1.0;
+
+            // If the images are to large resize the exposure compensation images
+            if (textureWithSize_ > 1200.0)
+            {
+                compensatorResize = textureWithSize_/1200.0;
+            }
+
+            // Resize the corner coordinates
+            cv::Point resizedWarpReferenceCorner = cv::Point(warpedReferenceCorner.x/compensatorResize, warpedReferenceCorner.y/compensatorResize);
+            cv::Point resizedWarpedQueryCorner = cv::Point(warpedQueryCorner.x/compensatorResize, warpedQueryCorner.y/compensatorResize);
+
+            // Resize the images and masks according to the exposure compensation resize factor
+            cv::Mat resizedWarpedReferenceMask, resizedWarpedQueryMask;
+            cv::Mat resizedWarpedReferenceImage, resizedWarpedQueryImage;
+            cv::resize(mask, resizedWarpedReferenceMask, cv::Size(), 1.0/compensatorResize, 1.0/compensatorResize, CV_INTER_LINEAR);
+            cv::resize(warpedQueryMask, resizedWarpedQueryMask, cv::Size(), 1.0/compensatorResize, 1.0/compensatorResize, CV_INTER_LINEAR);
+            cv::resize(warpedReferenceImage, resizedWarpedReferenceImage, cv::Size(), 1.0/compensatorResize, 1.0/compensatorResize, CV_INTER_LINEAR);
+            cv::resize(warpedQueryImage, resizedWarpedQueryImage, cv::Size(), 1.0/compensatorResize, 1.0/compensatorResize, CV_INTER_LINEAR);
+
+            // If it is the first image tested add the reference to the vectors
+            if (firstImage)
+            {
+                resizedCorners.push_back(resizedWarpReferenceCorner);
+                resizedMasks.push_back(resizedWarpedReferenceMask.clone());
+                resizedImages.push_back(resizedWarpedReferenceImage.clone());
+                warpedImages.push_back(warpedReferenceImage.clone());
+                corners.push_back(warpedReferenceCorner);
+                masks.push_back(mask.clone());
+            }
+
+            // Add query to the vectors
+            resizedCorners.push_back(resizedWarpedQueryCorner);
+            resizedMasks.push_back(resizedWarpedQueryMask.clone());
+            resizedImages.push_back(resizedWarpedQueryImage.clone());
+            warpedImages.push_back(warpedQueryImage.clone());
+            corners.push_back(warpedQueryCorner);
+            masks.push_back(warpedQueryMask.clone());
+
+            // Set that the first image has been added
+            firstImage = false;
+
+            ++blendedCameras;
+        }
+
+        if (warpedImages.size() > 1)
+        {
+            try
+            {
+                // Add corners, images and masks to the exposure compensator
+                exposureCompensator->feed(resizedCorners, resizedImages, resizedMasks);
+            }
+            catch (cv::Exception& e)
+            {
+                log_ << "Failed in opencv exposureCompensator->feed.\n";
+            }
+
+            try
+            {
+                // Perform exposure compensation
+                exposureCompensator->apply(0, corners[0], warpedImages[0], masks[0]);
+            }
+            catch (cv::Exception& e)
+            {
+                log_ << "Failed in opencv exposureCompensator->apply.\n";
+            }
+
+            // Vector to store the sizes of the warped images
+            std::vector<cv::Size> sizes;
+
+            // Setup size vector
+            for (size_t imageIndex = 0; imageIndex < warpedImages.size(); ++imageIndex)
+            {
+                sizes.push_back(warpedImages[imageIndex].size());
+            }
+
+            // Extract exposure compensated image
+            cv::Mat exposureCompensatedImage = warpedImages[0];
+
+            // Resize back to original size
+            cv::resize(exposureCompensatedImage, image, image.size(), CV_INTER_LINEAR);
+            image.convertTo(image, CV_8UC3);
+
+            // Create vector for 16-bit images
+            std::vector<cv::Mat> warpedImages16bit(warpedImages.size());
+
+            // Output image and mask from the blender
+            cv::Mat blendedImage, blendedMask;
+
+            // Try to blend
+            try
+            {
+                // Add the corner and image sizes to the OpenCV blender
+                blender->prepare(corners, sizes);
+
+                // For each image feed the blender with a 16bit image
+                for (size_t imageIndex = 0; imageIndex < masks.size(); ++imageIndex)
+                {
+                    warpedImages[imageIndex].convertTo(warpedImages16bit[imageIndex], CV_16S);
+                    blender->feed(warpedImages16bit[imageIndex], masks[imageIndex], corners[imageIndex]);
+                }
+
+                // Perform blending
+                blender->blend(blendedImage, blendedMask);
+
+            }
+            catch (cv::Exception& e)
+            {
+                log_ << "Failed to blend image " << currentCameraIndex << ".\n";
+            }
+
+            // The coordinate for the image corner in the blended image
+            cv::Point imageCorner = cv::Point(0,0);
+
+            // Calculate the position of the corner for the output image
+            for (size_t cornerIndex = 1; cornerIndex < corners.size(); ++cornerIndex)
+            {
+                imageCorner.x = std::max<int>(imageCorner.x, corners[0].x-corners[cornerIndex].x);
+                imageCorner.y = std::max<int>(imageCorner.y, corners[0].y-corners[cornerIndex].y);
+            }
+
+            // Extract the blended output image from the blended result
+            cv::resize(blendedImage(cv::Rect(imageCorner, sizes[0])), image, image.size(), CV_INTER_LINEAR);
+
+            // Convert back to 3 channel 8-bit image
+            image.convertTo(image, CV_8UC3);
+
+        }
+
+    #else
+        log_ << "Unable to run blending due to bad OpenCV version. Required modules are nonfree and stitching.\n";
+    #endif
+
+}
+
+void OdmTexturing::evaluateImageQuality()
+{
+    // Vectors containing the scores for each camera in order of blur, over/under exposure and alignment quality
+    std::vector<double> cameraBlurVector = std::vector<double>(cameras_.size());
+    std::vector<int> cameraBadPixelVector = std::vector<int>(cameras_.size());
+    std::vector<int> cameraAlignmentAssesmentVector = std::vector<int>(cameras_.size());
+
+    // Set correct size for the sorted cameras vector
+    sortedCameras_.resize(cameras_.size());
+
+    // Initilize the alignment assesment vector with 0
+    for (size_t cameraIndex = 0; cameraIndex < cameraAlignmentAssesmentVector.size(); ++cameraIndex)
+    {
+        cameraAlignmentAssesmentVector[cameraIndex] = 0;
+    }
+
+    // Create file stream for the bundle file
+    std::ifstream bundleFile;
+
+    // Open the bundle file
+    bundleFile.open(bundlePath_.c_str(), std::ios_base::binary);
+
+    // Check if file is open
+    if(!bundleFile.is_open())
+    {
+        throw OdmTexturingException("Error when reading the bundle file.");
+    }
+
+    // A temporary storage for a line from the file.
+    std::string dummyLine = "";
+
+    // Get dummy line
+    std::getline(bundleFile, dummyLine);
+
+    // Create variables for the number of points and cameras
+    int nrCameras = 0;
+    int nrPoints = 0;
+
+    // Get the number of cameras and points from the bundle file
+    bundleFile >> nrCameras;
+    bundleFile >> nrPoints;
+
+    // Skip the data for the cameras (15 elements per camera)
+    for (int bundleLineIndex = 0; bundleLineIndex < nrCameras*15; ++bundleLineIndex)
+    {
+        bundleFile >> dummyLine;
+    }
+
+    // Count the number of points corresponding to each camera
+    for (int pointIndex = 0; pointIndex < nrPoints; ++pointIndex)
+    {
+        // Skip the position and color values of the point
+        bundleFile >> dummyLine;
+        bundleFile >> dummyLine;
+        bundleFile >> dummyLine;
+
+        bundleFile >> dummyLine;
+        bundleFile >> dummyLine;
+        bundleFile >> dummyLine;
+
+        // Variable for the number of cameras the point is visible in
+        int nrPointCameras = 0;
+        // Set the number of cameras for the point
+        bundleFile >> nrPointCameras;
+
+        // For each point count up for each camera that it is visible in
+        for (int pointCameraIndex = 0; pointCameraIndex < nrPointCameras; ++pointCameraIndex)
+        {
+            int cameraIndex = 0;
+
+            // Get the camera index
+            bundleFile >> cameraIndex;
+
+            // Skip the Corresponding feature index and position
+            bundleFile >> dummyLine;
+            bundleFile >> dummyLine;
+            bundleFile >> dummyLine;
+
+            // Add upp the count for the point in the current camera
+            cameraAlignmentAssesmentVector[cameraIndex] += 1;
+        }
+    }
+
+    for (size_t cameraIndex = 0; cameraIndex < cameras_.size(); ++cameraIndex)
+    {
+        // Load image for current camera
+        cv::Mat image = cv::imread(cameras_[cameraIndex].texture_file,1);
+
+        // Convert BGR to Luv
+        cv::Mat luvImage;
+        cv::cvtColor(image, luvImage, CV_BGR2Luv);
+
+        // Split Luv into separate channels
+        std::vector<cv::Mat> luvChannels;
+        cv::split(luvImage, luvChannels);
+
+        // Blur image with Gaussian blur
+        cv::Mat blurL;
+        cv::GaussianBlur(luvChannels[0], blurL, cv::Size(9,9), 0);
+
+        // Extract blurred image from original to perform a high pass operation
+        cv::Mat highPassL = luvChannels[0] - blurL;
+
+        // Calculate mean value of the high pass illumination channel
+        cv::Scalar mean = cv::mean(highPassL);
+
+        // Set the mean value as a measurement of the blur in the image
+        cameraBlurVector[cameraIndex] = mean[0];
+
+        // Create images to store over and under exposed masks
+        cv::Mat highThresholdL;
+        cv::Mat lowThresholdL;
+
+        // Threshold the illumination channel for over and under exposed pixels
+        cv::threshold(luvChannels[0], highThresholdL, 250, 255, cv::THRESH_BINARY);
+        cv::threshold(luvChannels[0], lowThresholdL, 5, 255, cv::THRESH_BINARY_INV);
+
+        // Count the number of over and under exposed pixels
+        int underExposedPixelCount = cv::countNonZero(lowThresholdL);
+        int overExposedPixelCount = cv::countNonZero(highThresholdL);
+
+        // Set the number of over and under exposed pixels
+        cameraBadPixelVector[cameraIndex] = underExposedPixelCount + overExposedPixelCount;
+    }
+
+    std::vector<std::pair<int, int> > cameraRankValuePairVector = std::vector<std::pair<int, int> >(cameras_.size());
+
+    for (size_t cameraIndex = 0; cameraIndex < cameras_.size(); ++cameraIndex)
+    {
+        // Ranking counters
+        int blurRank = 0;
+        int alignmentRank = 0;
+        int exposureRank = 0;
+
+        // Check the values from the other cameras and calculate this cameras ranking score
+        for(size_t checkCameraIndex = 0; checkCameraIndex < cameras_.size(); ++checkCameraIndex)
+        {
+            if (cameraBlurVector[cameraIndex] < cameraBlurVector[checkCameraIndex])
+            {
+                ++blurRank;
+            }
+
+            if (cameraBadPixelVector[cameraIndex] > cameraBadPixelVector[checkCameraIndex])
+            {
+                ++exposureRank;
+            }
+
+            if (cameraAlignmentAssesmentVector[cameraIndex] < cameraAlignmentAssesmentVector[checkCameraIndex])
+            {
+                ++alignmentRank;
+            }
+        }
+
+        // Setup pair for sort on camera rank
+        std::pair<int, int> cameraRankValuePair;
+        cameraRankValuePair.first = cameraIndex;
+        cameraRankValuePair.second = blurRank + alignmentRank + exposureRank;
+
+        // Add pair to pair vector
+        cameraRankValuePairVector[cameraIndex] = cameraRankValuePair;
 
     }
 
+    // Sort pair vector
+    std::sort(cameraRankValuePairVector.begin(), cameraRankValuePairVector.end(), sortPairIndex());
+
+    // Setup sorted camera index vector
+    for (size_t cameraIndex = 0; cameraIndex < cameras_.size(); ++cameraIndex)
+    {
+        sortedCameras_[cameraIndex] = cameraRankValuePairVector[cameraIndex].first;
+    }
 }
 
 void OdmTexturing::triangleToImageAssignment()
@@ -415,8 +1038,10 @@ void OdmTexturing::triangleToImageAssignment()
     uvNull.idx_cloud = -1;
     uvNull.idx_face = -1;
 
-    for (size_t cameraIndex = 0; cameraIndex < cameras_.size(); ++cameraIndex)
+    for (size_t sortedCameraIndex = 0; sortedCameraIndex < sortedCameras_.size(); ++sortedCameraIndex)
     {
+        size_t cameraIndex = sortedCameras_[sortedCameraIndex];
+
         // Move vertices in mesh into the camera coordinate system
         pcl::PointCloud<pcl::PointXYZ>::Ptr cameraCloud (new pcl::PointCloud<pcl::PointXYZ>);
         pcl::transformPointCloud (*meshCloud, *cameraCloud, cameras_[cameraIndex].pose.inverse());
@@ -564,9 +1189,7 @@ void OdmTexturing::triangleToImageAssignment()
                 ++count;
             }
         }
-
     }
-
 }
 
 void OdmTexturing::calculatePatches()
@@ -1027,6 +1650,9 @@ void OdmTexturing::createTextures()
             // Load image for current camera
             image = cv::imread(cameras_[cameraIndex].texture_file,1);
 
+            resizedImage = image;
+
+            /*
             // Calculate the resize factor to texturize with textureWithSize_
             double resizeFactor = textureWithSize_ / static_cast<double>(image.cols);
 
@@ -1038,6 +1664,17 @@ void OdmTexturing::createTextures()
             // Resize image to the resolution used to texture with
             cv::resize(image, resizedImage, cv::Size(), resizeFactor, resizeFactor, CV_INTER_AREA);
 
+
+            try
+            {
+                blendIndividualCameras(resizedImage, cameraIndex, 8);
+            }
+            catch (std::exception&)
+            {
+                std::cout << "Failed to blend an image into camera: " << cameraIndex << std::endl;
+            }
+            std::cout << "currently at cameraindex: " << cameraIndex << std::endl;
+*/
             // Loop through all patches
             for (size_t patchIndex = 0; patchIndex < patches_.size(); ++patchIndex)
             {
@@ -1085,6 +1722,29 @@ void OdmTexturing::writeObjFile()
     }
 }
 
+cv::Mat OdmTexturing::affine3fToCvMat4x4(const Eigen::Affine3f &input)
+{
+    cv::Mat output(4, 4, CV_32FC1);
+    output.at<float>(0,0) = input(0,0);
+    output.at<float>(0,1) = input(0,1);
+    output.at<float>(0,2) = input(0,2);
+    output.at<float>(0,3) = input(0,3);
+    output.at<float>(1,0) = input(1,0);
+    output.at<float>(1,1) = input(1,1);
+    output.at<float>(1,2) = input(1,2);
+    output.at<float>(1,3) = input(1,3);
+    output.at<float>(2,0) = input(2,0);
+    output.at<float>(2,1) = input(2,1);
+    output.at<float>(2,2) = input(2,2);
+    output.at<float>(2,3) = input(2,3);
+    output.at<float>(3,0) = input(3,0);
+    output.at<float>(3,1) = input(3,1);
+    output.at<float>(3,2) = input(3,2);
+    output.at<float>(3,3) = input(3,3);
+    return output;
+
+}
+
 void OdmTexturing::printHelp()
 {
     log_.setIsPrintingInCout(true);
@@ -1116,6 +1776,9 @@ void OdmTexturing::printHelp()
     log_ << "\"-outputFolder <path>\" (mandatory)\n";
     log_ << "Path to store the textured model. The folder must exist.\n";
 
+    log_ << "\"-outputBlendedImagesFolder <path>\" (optional)\n";
+    log_ << "Path to store the blended images if this step is activated. If not provided the images path will be used.\n";
+
     log_ << "\"-logFile <path>\" (optional)\n";
     log_ << "Path to save the log file.\n";
 
@@ -1125,8 +1788,14 @@ void OdmTexturing::printHelp()
     log_ << "\"-textureResolution_ <integer>\" (optional, default: 4096)\n";
     log_ << "The resolution of the output textures. Must be greater than textureWithSize.\n";
 
-    log_ << "\"-textureWithSize <integer>\" (optional, default: 1200)\n";
+    log_ << "\"-textureWithSize <integer>\" (optional, default: 2000)\n";
     log_ << "The resolution to rescale the images performing the texturing.\n";
+
+    log_ << "\"-performBlending\"\n";
+    log_ << "If provided blending will be performed. Will increase computation time.\n";
+
+    log_ << "\"-nrCamerasToBlend <integer>\" (optional, default: 3)\n";
+    log_ << "The number of images to use in the blending step.\n";
 
     log_.setIsPrintingInCout(false);
 
